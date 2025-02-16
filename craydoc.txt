@@ -1,0 +1,278 @@
+                                   Cray and DtCyber
+I am using Ubuntu Linux running on Virtualbox 
+Eseentially we will establish a network connecton between the Cray and CDC Cyber and then run a tape on the CDC Cyber
+which installs various packages on both the Cray and CDC Cyber.We will then use these packages to complile a fortran program
+onthe cray,run it and then return the results back to the CDC.
+
+Step 1
+download Cray Simulator and DtCyber
+git clone https://github.com/andrastantos/cray-sim.git
+git clone https://github.com/kej715/DtCyber.git
+(Kevin Jordan  has a couple of other repo's containing stuff for both the Cray and DtCyber-well worth checking out.)
+
+Build them and DEADSTART them 
+NB Make sure the normal class is on and the limit is 5 on the cray
+ie once the system is started run the following commands
+CLASS,NORMAL,ON
+LIMIT,5
+
+I usually have three consoles open on the cray
+
+one running STATUS
+One running LINK
+one running STATCLASS
+
+DtCyber is installed in /home/ian so we need to go to /home/ian/DtCyber/NOS2.8.7 and add a file called site.cfg 
+which contains
+[NETWORK]
+crayStation=XMP1,XMP,24,127.0.0.1:9000,SFE,CC1
+
+Once you have created the file run the reconfigure command from the DtCyber operator console prompt.
+It will take a while to run. Also sometimes it will fail just before the emulator writes a new DEADSTART tape.
+In this case simply rerun the emulator as normal ie
+sudo node start
+and when the system has deadstarted rerun the reconfigure command-it should work then..
+Once the reconfigure process has finished you should see two things-
+a) on the cray a new link called FE
+b) On the DtCyber Console an entry called CRAY COS 1.17 02/28/89
+
+Great-connection has now been established..
+Step two
+In the DtCyber operator console Prompt run
+install -f cos-tools
+This loads the cos-tools tape and installs the cos-tools utils on the Cray and cdc.
+Once you have done this keep an eye on the STATUS program on the cray-you should see various datasets being transferred,run etc.
+
+Once the tape has completed you can now get to business..
+You can either write or ftp a fortran program of your choice-we shall call it EXAMPLE.
+I found it a good idea to put the CDC in ASCII mode
+/ASCII
+First we need to get the CRAY JCL routine from the system library (this was installed by the cos-tools tape)
+/GET,CRAY/UN=LIBRARY
+You can save it..
+/SAVE,CRAY
+You can now submit your program..
+/BEGIN,FTN,CRAY,I=EXAMPLE
+keep an eye on the cray STATUS and you should see activty as datasets are moved around..
+to check the results
+/STATUS,JSN
+And you should see a job in the wait queue-this is the result.Now normally
+you would use
+/QGET,<JSN>
+to retrive the results and
+/SAVE,<JSN>
+to save it as a file.
+DO NOT DO THIS
+The results are not in format useable in the CDC- you need to use
+/BEGIN,QGET,CRAY,<JSN>
+Which should save the results in a local file called <JSN>
+
+
+----------------------------------------SAMPLE SESSION--------------------------------------------------------
+/ascii
+ASCII.
+/LIST,F=EXAMPLE
+/GET,EXAMPLE
+/LIST,F=EXAMPLE
+      PROGRAM EXAMPLE 
+      INTEGER V1, V2, V3
+      PARAMETER (V1=1, V2=2, V3=3)
+      REAL A1(64), A2(64), A3(64) 
+  
+      DO 100 I = 1, 64
+        A1(I) = I 
+        A2(I) = 3.14159 
+ 100  CONTINUE
+  
+      CALL VLEN(64) 
+  
+      I = VSTORE( 
+     &      VVMULR(V3,                 ! vector-vector multiply, result to register V3
+     &             VLOAD(V1, 1, A1),   ! load register V1 from array A1
+     &             VLOAD(V2, 1, A2)),  ! load register V2 from array A2
+     &      1, A3)                     ! store register V3 in array A3
+  
+      PRINT '(8(1X,8F8.3,/))', (A3(I), I = 1, 64) 
+  
+      END 
+/GET,CRAY/UN=LIBRARY
+/BEGIN,FTN,CRAY,I=EXAMPLE
+/STATUS,JSN
+ 
+ JSN SC CS DS LID STATUS                JSN SC CS DS LID STATUS
+
+ AACS.T.ON.BC.   .EXECUTING             AACV.S.  .BC.M01.WAIT QUEUE 
+/BEGIN,QGET,CRAY,AACV
+/CATLIST
+ CATALOG OF  GUEST            FM/CYBER   25/02/16. 12.14.46.
+ 
+ 
+ 
+ INDIRECT ACCESS FILES
+ 
+  AACS      AADA      AADB      AADF      EXAMPLE   HELLO     MAILBOX 
+  AACW    
+ 
+         8 INDIRECT ACCESS FILES ON DISK.  TOTAL PRUS =       130.
+ 
+/SAVE,AACV
+/CATLIST
+ CATALOG OF  GUEST            FM/CYBER   25/02/16. 12.15.05.
+ 
+ 
+ 
+ INDIRECT ACCESS FILES
+ 
+  AACS      AACW      AADB      AADF      EXAMPLE   HELLO     MAILBOX 
+  AACV      AADA    
+ 
+         9 INDIRECT ACCESS FILES ON DISK.  TOTAL PRUS =       154.
+ 
+/LIST,F=AACV
+1                                                                 Cray X-MP kFTC 1.9.10         02/15/85 12:12:45  PAGE    1
+  
+  
+  
+     1:       PROGRAM EXAMPLE
+     2:       INTEGER V1, V2, V3 
+     3:       PARAMETER (V1=1, V2=2, V3=3) 
+     4:       REAL A1(64), A2(64), A3(64)
+     5:
+     6:       DO 100 I = 1, 64 
+     7:         A1(I) = I
+     8:         A2(I) = 3.14159
+     9:  100  CONTINUE 
+    10:
+    11:       CALL VLEN(64)
+    12:
+    13:       I = VSTORE(
+    14:      &      VVMULR(V3,                 ! vector-vector multiply, result to register V3 
+    15:      &             VLOAD(V1, 1, A1),   ! load register V1 from array A1 
+    16:      &             VLOAD(V2, 1, A2)),  ! load register V2 from array A2 
+    17:      &      1, A3)                     ! store register V3 in array A3 
+    18:
+    19:       PRINT '(8(1X,8F8.3,/))', (A3(I), I = 1, 64)
+    20:
+    21:       END
+  
+  
+  Symbols 
+  Name                            Class      Type           Size    Location Common
+  ------------------------------- ---------- -------------- ------- -------- -------- 
+  A1                              Static     Real           64             0
+  A2                              Static     Real           64            64
+  A3                              Static     Real           64           128
+  EXAMPLE                         Program 
+  I                               Static     Integer        1            192 
+  V1                              Parameter  Integer        1 
+  V2                              Parameter  Integer        1 
+  V3                              Parameter  Integer        1 
+  VLEN                            Subroutine 
+  VLOAD                           Intrinsic  Integer
+  VSTORE                          Intrinsic  Integer
+  VVMULR                          Intrinsic  Integer
+    3.141   6.283   9.424  12.566  15.707  18.849  21.991  25.132 
+   28.274  31.415  34.557  37.699  40.840  43.982  47.123  50.265 
+   53.407  56.548  59.690  62.831  65.973  69.114  72.256  75.398 
+   78.539  81.681  84.822  87.964  91.106  94.247  97.389 100.530 
+  103.672 106.814 109.955 113.097 116.238 119.380 122.522 125.663 
+  128.805 131.946 135.088 138.229 141.371 144.513 147.654 150.796 
+  153.937 157.079 160.221 163.362 166.504 169.645 172.787 175.929 
+  179.070 182.212 185.353 188.495 191.636 194.778 197.920 201.061 
+  179.070 182.212 185.353 188.495 191.636 194.778 197.920 201.061 
+1 
+  12:12:44.8926       0.0000    CSP             CRAY XMP-14 SN 302      Leading Edge Technologies       02/16/85
+  12:12:44.8933       0.0000    CSP 
+  12:12:44.8940       0.0000    CSP             CRAY OPERATING SYSTEM           COS 1.17  ASSEMBLY DATE 02/28/89
+  12:12:44.8946       0.0000    CSP 
+  12:12:44.8951       0.0000    CSP 
+  12:12:44.8996       0.0000    CSP     JOB,JN=FTN,T=180. 
+  12:12:44.9194       0.0020    CSP     ACCOUNT,US=,AC=,APW=,UPW=.
+  12:12:44.9202       0.0021    CSP 
+  12:12:44.9208       0.0021    CSP     ....................................................................... 
+  12:12:44.9217       0.0021    CSP 
+  12:12:44.9289       0.0023    CSP     ECHO,ON=ALL.
+  12:12:44.9310       0.0024    CSP     OPTION,STAT=ON. 
+  12:12:44.9338       0.0031    CSP     ACCESS,DN=PROCLIB,OWN=SYSTEM. 
+  12:12:44.9445       0.0033    PDM     PD000 - PDN = PROCLIB          ID =           ED =    1  OWN = SYSTEM 
+  12:12:44.9449       0.0033    PDM     PD000 - ACCESS  COMPLETE, SIZE =       1
+  12:12:44.9479       0.0034    CSP     LIBRARY,DN=*:PROCLIB.
+  12:12:44.9807       0.0046    CSP     COPYF,O=EXAMPLE.
+  12:12:45.0219       0.0053    USER    Copy complete. Records: 21       Files: 1
+  12:12:45.0250       0.0053    EXP     SY005 - COPYF        6144 WRDS,    2 IOS,      2 REQ,      12 STRS,     .009 SEC
+  12:12:45.0257       0.0053    EXP           - 29-1-22A       18 STRS   READ:         3 REQ,      12 STRS,     .016 SEC 
+  12:12:45.0324       0.0054    CSP     REWIND,DN=EXAMPLE.
+  12:12:45.0382       0.0058    CSP     MEMORY,FL,USER. 
+  12:12:45.1056       0.0080    CSP     FTN,I=EXAMPLE,GO. 
+  12:12:45.2780       0.0155  1 CSP     KFTC,I=EXAMPLE,L=$OUT,O=ZZZZCAL,ALLOC=STATIC. 
+  12:12:46.6211       0.9981  1 EXP     SY005 - KFTC        48128 WRDS,   23 IOS,      3 REQ,      94 STRS,     .137 SEC
+  12:12:46.6217       0.9981  1 EXP           - 29-1-32A      108 STRS   READ:        24 REQ,      94 STRS,     .141 SEC 
+  12:12:46.7105       0.9989  1 CSP     CAL,X,I=ZZZZCAL,L=0,B=$BLD. 
+  12:12:48.9019       2.8035  1 EXP     SY005 - CAL         37888 WRDS,   18 IOS,      3 REQ,      74 STRS,     .124 SEC
+  12:12:48.9025       2.8035  1 EXP           - 29-1-31A       90 STRS   READ:        19 REQ,      74 STRS,     .128 SEC 
+  12:12:48.9331       2.8035  1 CSP     IF('YES'.EQ.'YES'.OR.'NO'.EQ.'YES') 
+  12:12:48.9362       2.8046  1 CSP       ACCESS,DN=CLIB,OWN=SYSTEM.
+  12:12:48.9456       2.8048  1 PDM     PD000 - PDN = CLIB             ID =           ED =    1  OWN = SYSTEM 
+  12:12:48.9461       2.8048  1 PDM     PD000 - ACCESS  COMPLETE, SIZE =      58
+  12:12:48.9494       2.8052  1 CSP       ACCESS,DN=EMLIB,OWN=SYSTEM. 
+  12:12:48.9579       2.8054  1 PDM     PD000 - PDN = EMLIB            ID =           ED =    1  OWN = SYSTEM 
+  12:12:48.9583       2.8054  1 PDM     PD000 - ACCESS  COMPLETE, SIZE =       5
+  12:12:49.0308       2.8059  1 CSP       ACCESS,DN=IOLIB,OWN=SYSTEM. 
+  12:12:49.0390       2.8060  1 PDM     PD000 - PDN = IOLIB            ID =           ED =    1  OWN = SYSTEM 
+  12:12:49.0394       2.8060  1 PDM     PD000 - ACCESS  COMPLETE, SIZE =      19
+  12:12:49.0429       2.8065  1 CSP       ACCESS,DN=INTFLIB,OWN=SYSTEM. 
+  12:12:49.0507       2.8066  1 PDM     PD000 - PDN = INTFLIB          ID =           ED =    1  OWN = SYSTEM 
+  12:12:49.0512       2.8066  1 PDM     PD000 - ACCESS  COMPLETE, SIZE =      12
+  12:12:49.0545       2.8072  1 CSP       ACCESS,DN=RTLIB,OWN=SYSTEM. 
+  12:12:49.0614       2.8073  1 PDM     PD000 - PDN = RTLIB            ID =           ED =    1  OWN = SYSTEM 
+  12:12:49.0619       2.8073  1 PDM     PD000 - ACCESS  COMPLETE, SIZE =       1
+  12:12:49.0669       2.8078  1 CSP       ACCESS,DN=SYSLIB,OWN=SYSTEM.
+  12:12:49.1462       2.8079  1 PDM     PD000 - PDN = SYSLIB           ID =           ED =    1  OWN = SYSTEM 
+  12:12:49.1467       2.8079  1 PDM     PD000 - ACCESS  COMPLETE, SIZE =      15
+  12:12:49.1890       2.8091  1 CSP       LDR,M=MAP,AB=$ABD,DN=$BLD,LIB=IOLIB:INTFLIB:RTLIB:EMLIB:SYSLIB:CLIB. 
+  12:13:12.5603      23.2399  1 EXP     SY005 - LDR         13824 WRDS,    6 IOS,      3 REQ,      27 STRS,     .025 SEC
+  12:13:12.5608      23.2399  1 EXP           - 29-1-31A       36 STRS   READ:         7 REQ,      27 STRS,     .030 SEC 
+  12:13:12.5928      23.2400  1 CSP       IF('YES'.EQ.'YES')
+  12:13:12.6272      23.2407  1 CSP         $ABD. 
+  12:13:12.9664      23.3961  1 CSP       ENDIF.
+  12:13:12.9687      23.3963  1 CSP     ENDIF.
+  12:13:12.9710      23.3964  1 CSP     RETURN. 
+  12:13:12.9718      23.3966    EXP     SY005 - $000001        73 WRDS,    4 IOS,      4 REQ,       4 STRS,     .007 SEC
+  12:13:12.9723      23.3966    EXP           - 29-1-31A       18 STRS   READ:         2 REQ,       2 STRS,     .005 SEC 
+  12:13:12.9728      23.3966    EXP           -                          WRITE:        2 REQ,       2 STRS,     .003 SEC 
+  12:13:12.9797      23.3966    CSP     END OF JOB
+  12:13:13.0082      23.3967    EXP     SY005 - PROCLIB       111 WRDS,    5 IOS,      5 REQ,       5 STRS,     .029 SEC
+  12:13:13.0087      23.3967    EXP           - 29-1-22A       18 STRS   READ:         5 REQ,       5 STRS,     .030 SEC 
+  12:13:13.0107      23.3967    EXP     SY005 - EXAMPLE       108 WRDS,    2 IOS,      2 REQ,       2 STRS,     .007 SEC
+  12:13:13.0113      23.3967    EXP           - 29-1-30A       18 STRS   READ:         1 REQ,       1 STRS,     .005 SEC 
+  12:13:13.0117      23.3967    EXP           -                          WRITE:        1 REQ,       1 STRS,     .002 SEC 
+  12:13:13.0129      23.3967    EXP     SY005 - ZZZZCAL       926 WRDS,    6 IOS,      6 REQ,       6 STRS,     .031 SEC
+  12:13:13.0135      23.3967    EXP           - 29-1-22A       18 STRS   READ:         4 REQ,       4 STRS,     .028 SEC 
+  12:13:13.0141      23.3967    EXP           -                          WRITE:        2 REQ,       2 STRS,     .004 SEC 
+  12:13:13.0155      23.3967    EXP     SY005 - $BLD          366 WRDS,    4 IOS,      4 REQ,       4 STRS,     .011 SEC
+  12:13:13.0160      23.3967    EXP           - 29-1-30A       18 STRS   READ:         3 REQ,       3 STRS,     .010 SEC 
+  12:13:13.0165      23.3967    EXP           -                          WRITE:        1 REQ,       1 STRS,     .002 SEC 
+  12:13:13.0177      23.3967    EXP     SY005 - CLIB        29696 WRDS,  175 IOS,    175 REQ,     175 STRS,     .477 SEC
+  12:13:13.0187      23.3967    EXP           - 29-1-31A       72 STRS   READ:       175 REQ,     175 STRS,     .533 SEC 
+  12:13:13.0209      23.3967    EXP     SY005 - EMLIB        2560 WRDS,   16 IOS,     16 REQ,      16 STRS,     .067 SEC
+  12:13:13.0213      23.3967    EXP           - 29-1-22A       18 STRS   READ:        16 REQ,      16 STRS,     .072 SEC 
+  12:13:13.0237      23.3967    EXP     SY005 - IOLIB        9728 WRDS,   58 IOS,     58 REQ,      58 STRS,     .167 SEC
+  12:13:13.0243      23.3967    EXP           - 29-1-31A       36 STRS   READ:        58 REQ,      58 STRS,     .185 SEC 
+  12:13:13.0265      23.3967    EXP     SY005 - INTFLIB      6144 WRDS,   37 IOS,     37 REQ,      37 STRS,     .104 SEC
+  12:13:13.0270      23.3967    EXP           - 29-1-32A       18 STRS   READ:        37 REQ,      37 STRS,     .116 SEC 
+  12:13:13.0290      23.3968    EXP     SY005 - RTLIB         512 WRDS,    4 IOS,      4 REQ,       4 STRS,     .026 SEC
+  12:13:13.0295      23.3968    EXP           - 29-1-22A       18 STRS   READ:         4 REQ,       4 STRS,     .027 SEC 
+  12:13:13.0319      23.3968    EXP     SY005 - SYSLIB       7680 WRDS,   46 IOS,     46 REQ,      46 STRS,     .131 SEC
+  12:13:13.0323      23.3968    EXP           - 29-1-22A       18 STRS   READ:        46 REQ,      46 STRS,     .145 SEC 
+  12:13:13.0349      23.3968    EXP     SY005 - MAP          7471 WRDS,   15 IOS,     15 REQ,      15 STRS,     .040 SEC
+  12:13:13.0354      23.3968    EXP           - 29-1-32A       18 STRS   WRITE:       15 REQ,      15 STRS,     .044 SEC 
+  12:13:13.0367      23.3969    EXP     SY005 - $ABD        13693 WRDS,   54 IOS,     54 REQ,      54 STRS,     .141 SEC
+  12:13:13.0372      23.3969    EXP           - 29-1-30A       36 STRS   READ:        27 REQ,      27 STRS,     .072 SEC 
+  12:13:13.0377      23.3969    EXP           -                          WRITE:       27 REQ,      27 STRS,     .063 SEC 
+  12:13:13.0389      23.3969    CSP 
+  12:13:13.0395      23.3969    CSP 
+  12:13:13.1070      23.3971    USER    The best things in life are free.
+  12:13:13.1357      23.3971    EXP     SY005 - CHARGES       512 WRDS,    1 IOS,      1 REQ,       1 STRS,     .002 SEC
+  12:13:13.1362      23.3971    EXP           - 29-1-22A       18 STRS   READ:         1 REQ,       1 STRS,     .002 SEC 
+/
+
