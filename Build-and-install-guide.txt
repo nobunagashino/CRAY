@@ -1,0 +1,155 @@
+DtCyber install (Ubuntu 24.04.1)
+git clone https://github.com/kej715/DtCyber.git
+sudo apt install gcc perl make
+sudo apt install xfonts*
+<reboot server>
+sudo apt install npm
+sudo apt install libx11-dev
+
+in DtCyber 
+cp Makefile.linux64 Makefile
+make
+cd ../automation
+make
+cd ../NOS2.8.7
+sudo node install
+
+NB. This makes a basic system but does not seem to have the web interfaces enabled-need to investigate:you can still use 
+telnet localhost
+to access the system. At this point shut the simulator down as we will set up the cray and the simulators work best if you start the cray first (making sure the class normal is on and limits are 6) and then start the Cyber.
+
+
+Cray install
+sudo apt install g++ make libboost-all-dev libncurses-dev libgpm-dev xterm telnet
+sudo apt lua5.4 bison flex
+We are going to make the simulator along with examples so we need to
+download and install COS-tools first
+git clone https://github.com/kej715/COS-Tools.git
+cd COS-Tools
+make
+su root
+make install
+and then a cross-compiler 
+https://github.com/kej715/ack.git
+cd ack
+./cray-build.sh
+su root
+./cray-build.sh install
+These two packages are updated quite regularly and could be useful-so worth
+keeping an eye on..The ack package provides a number of cross-compliers for 
+basic,c and,god forbid pascal(*) for use on the cray.
+git clone https://github.com/andrastantos/cray-sim.git
+cd cray-sim
+cd simulator
+make
+cd ../target
+cd cos_117
+./build_boot_tape
+./build_exp_disk_with_examples
+
+Now we need to start the Cray,install COS_117 and bring it up so it can run jobs.
+cd ../..
+./run
+one CPU box will appear along with three IOP xterms.
+in IOP0 type
+START COS_117 INSTALL   
+(note normally you would type START COS_117 DEADSTART)
+After a bit you should see "START COMPLETE"
+type
+STATION
+which opens a CRAY STATION Session
+type 
+LOGON
+STMSG
+REPLY,0,GO
+The Console will say a start install,go to continue
+REPLY,1,GO
+you will see disk activity in the Peripherals box
+STMSG,INFO
+Will Show you details..
+press the + key on keypad and it should show "STARTUP COMPLETE"
+CONSOLE,1
+CONSOLE,2
+(which suprise suprise opens two more STATION console sessions)
+in CONSOLE,1 type
+STATCLASS
+You Should see the normal class is  off,and max JXTS(Limit) is 0
+CLASS,NORMAL,ON
+LIMIT,6
+And the class settings and limit will change 
+now type 
+STATUS
+This will show datasets being processes so worth keeping an eye on
+in CONSOLE,2
+type 
+LINK
+This shows connections and there should be one called AP
+
+Time to fire up the Dtcyber...
+First copy over your site.cfg file to
+DtCyber/NOS2.8.7
+mine looks like
+[NETWORK]
+crayStation=XMP1,XMP,24,127.0.0.1:9000,SFE,CC1
+and then start the DtCyber
+sudo node start
+When the system is deadstarted and you have the operator prompt type
+reconfigure
+This can take some time so grab a coffee..
+It will probably fail the first time-simply restart and rerun the configure 
+command and it should go though the second time..
+So grab a second coffee...
+So hopefully you should be looking at a green screen..Line 25 should read something
+like
+25  CRS  X 72 402 X CRAY COS1.17 02/28.89 120
+and the CRAY LINK Console should have a new line 
+FE 0 0 0 8 8 16  1 3600 1,4
+
+Great-the two emulators can now talk to each other..
+We can have some fun by running an interactive session from the DtCyber
+telnet localhost
+login as GUEST
+/HELLO,ICF
+/LOGON
+!ACCOUNT,AC=CRAY.
+!FETCH,DN=HELLOA,MF=AP,AC=ST,TEXT=BIN/HELLOA.
+SS004 - DATASET RECEIVED FROM FRONT END
+!HELLOA
+Hello world!
+! /BYE
+BYE
+ICF002 - LOGOFF,TID=GUEST  ,JN=GUEST   ,PN= 1.    
+ICF006 - GOODBYE FROM ICF.           
+ICF     CONNECT TIME 00.04.35.
+TE02P04 - APPLICATION: 
+      
+JSN: AACP, NAMIAF
+
+We can now run the cos-tools tape
+
+10:55:20 [DtCyber Console] Operator> install -f cos-tools
+10:55:33 AM ----------------------------------
+10:55:33 AM Starting installation of cos-tools
+10:55:33 AM Download tape image ...
+10:55:34 AM Mount tape ...                            
+10:55:42 AM Run job opt/cos-tools.job ...
+10:58:46 AM Run cos-tools POST-install tasks ...
+10:58:46 AM   Run job opt/cos-tools-proclib.job ...
+10:58:58 AM   Run job opt/cos-tools-utils.job ...
+10:59:04 AM   Run job opt/cos-tools-lisp.job ...
+10:59:56 AM   Run command "node opt/cos-tools.post" ...
+11:00:31 AM   Run job opt/cos-tools-cleanup.job ...
+11:00:39 AM cos-tools installed successfully
+ 
+As the tape runs keep an eye on the STATUS console and you will see
+datasets moving in and out of the cray..
+Takes a few mintues to run..
+
+Stuff still to do
+Get the web interfaces up and working
+Get a PLATO console up and working
+
+Things I want to do
+Write an interactive mode program (pref in C) for the Cray.
+
+(*) Just joking..I learnt programming using Pascal.
