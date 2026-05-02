@@ -4,6 +4,7 @@
 #include <time.h>
 #include <sys/syslog.h>
 void eputs(char *s);
+/*
 ### DRAFT --needs checking...
 # This allows the user to add two small numbers (result must be less
 #then 10 ) in an interactive mode on a cray mp-x
@@ -33,12 +34,12 @@ void eputs(char *s);
 #There will also be an error message which I need to look at..
 
 
-
+*/
 
 
 int main(int argc, char *argv[]) 
 {
-char result[1];
+char result[5];
 /*    if (argc != 3) {
         printf("Usage: %s <num1> <num2>\n", argv[0]);
         return 1;
@@ -52,6 +53,8 @@ snprintf(result, sizeof(result), "%d", sum);
     printf("Sum: %d\n", sum);
 
 eputs(result);
+(*result)++;
+/* eputs(result); */
     return 0;
 }
 void eputs(char *s) {
